@@ -42,12 +42,6 @@ const App: React.FC = () => {
   const startProcessing = async () => {
     if (files.length === 0) return;
     
-    if (!process.env.API_KEY) {
-      setError("ERRO: Variável de ambiente 'API_KEY' não configurada. Certifique-se de que o nome da variável no Vercel é exatamente 'API_KEY'.");
-      setStatus(ProcessStatus.ERROR);
-      return;
-    }
-
     setStatus(ProcessStatus.EXTRACTING);
     setError(null);
     setReport(null);
@@ -56,12 +50,14 @@ const App: React.FC = () => {
     const individualAnalyses: ArticleAnalysis[] = [];
 
     try {
+      // Processamento individual de cada artigo
       for (let i = 0; i < files.length; i++) {
         setProgress(p => ({ ...p, current: i + 1 }));
         const analysis = await analyzeArticle(files[i]);
         individualAnalyses.push(analysis);
       }
 
+      // Processamento da síntese final
       setStatus(ProcessStatus.SYNTHESIZING);
       const synthesisData = await generateFinalSynthesis(individualAnalyses);
 
@@ -73,8 +69,10 @@ const App: React.FC = () => {
       });
       setStatus(ProcessStatus.COMPLETED);
     } catch (err: any) {
-      console.error("Erro no processamento:", err);
-      setError(`Erro no processamento: ${err.message || 'Verifique sua chave de API e a integridade dos arquivos.'}`);
+      console.error("Erro detalhado:", err);
+      // Exibe a mensagem de erro real vinda da API para facilitar o diagnóstico
+      const errorMessage = err.message || "Erro desconhecido";
+      setError(`Falha na IA: ${errorMessage}. (Dica: Verifique se a variável API_KEY está correta no Vercel)`);
       setStatus(ProcessStatus.ERROR);
     }
   };

@@ -16,8 +16,8 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export const analyzeArticle = async (file: File): Promise<ArticleAnalysis> => {
-  // Inicialização dentro da função para garantir que pegue a chave mais recente do ambiente
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Use a chave diretamente do ambiente
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   const base64Data = await fileToBase64(file);
 
   const response = await ai.models.generateContent({
@@ -62,11 +62,12 @@ export const analyzeArticle = async (file: File): Promise<ArticleAnalysis> => {
     },
   });
 
-  if (!response.text) {
-    throw new Error("Resposta do modelo vazia durante a análise do artigo.");
+  const text = response.text;
+  if (!text) {
+    throw new Error("A IA não retornou conteúdo para este artigo. Pode ser uma restrição do arquivo ou erro de API.");
   }
 
-  const data = JSON.parse(response.text.trim());
+  const data = JSON.parse(text.trim());
   return {
     ...data,
     id: Math.random().toString(36).substr(2, 9),
@@ -75,7 +76,7 @@ export const analyzeArticle = async (file: File): Promise<ArticleAnalysis> => {
 };
 
 export const generateFinalSynthesis = async (analyses: ArticleAnalysis[]): Promise<{ matrix: string, narrative: string, conflicts: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   
   const analysesText = analyses.map((a, i) => `
     Artigo ${i + 1}:
@@ -100,7 +101,7 @@ export const generateFinalSynthesis = async (analyses: ArticleAnalysis[]): Promi
     model: 'gemini-3-pro-preview',
     contents: { parts: [{ text: prompt }] },
     config: {
-      thinkingConfig: { thinkingBudget: 32768 }, // Orçamento máximo para raciocínio complexo de síntese
+      thinkingConfig: { thinkingBudget: 32768 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -114,9 +115,10 @@ export const generateFinalSynthesis = async (analyses: ArticleAnalysis[]): Promi
     }
   });
 
-  if (!response.text) {
-    throw new Error("Resposta do modelo vazia durante a síntese final.");
+  const text = response.text;
+  if (!text) {
+    throw new Error("A IA falhou ao gerar a síntese final consolidada.");
   }
 
-  return JSON.parse(response.text.trim());
+  return JSON.parse(text.trim());
 };
