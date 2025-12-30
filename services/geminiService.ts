@@ -1,12 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ArticleAnalysis, SynthesisReport } from "../types";
-
-const API_KEY = process.env.API_KEY || "";
-
-const getAIInstance = () => {
-  return new GoogleGenAI({ apiKey: API_KEY });
-};
+import { ArticleAnalysis } from "../types.ts";
 
 // Convert File to base64
 const fileToBase64 = (file: File): Promise<string> => {
@@ -15,7 +9,6 @@ const fileToBase64 = (file: File): Promise<string> => {
     reader.readAsDataURL(file);
     reader.onload = () => {
       const base64String = reader.result as string;
-      // Remove the data URI prefix (e.g., "data:application/pdf;base64,")
       resolve(base64String.split(',')[1]);
     };
     reader.onerror = (error) => reject(error);
@@ -23,7 +16,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export const analyzeArticle = async (file: File): Promise<ArticleAnalysis> => {
-  const ai = getAIInstance();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const base64Data = await fileToBase64(file);
 
   const response = await ai.models.generateContent({
@@ -79,7 +72,7 @@ export const analyzeArticle = async (file: File): Promise<ArticleAnalysis> => {
 };
 
 export const generateFinalSynthesis = async (analyses: ArticleAnalysis[]): Promise<{ matrix: string, narrative: string, conflicts: string }> => {
-  const ai = getAIInstance();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const analysesText = analyses.map((a, i) => `
     Artigo ${i + 1}:

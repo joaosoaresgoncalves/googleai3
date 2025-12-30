@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { 
   FileText, 
   Upload, 
@@ -13,8 +13,8 @@ import {
   ChevronRight,
   Trash2
 } from 'lucide-react';
-import { ArticleAnalysis, SynthesisReport, ProcessStatus } from './types';
-import { analyzeArticle, generateFinalSynthesis } from './services/geminiService';
+import { ArticleAnalysis, SynthesisReport, ProcessStatus } from './types.ts';
+import { analyzeArticle, generateFinalSynthesis } from './services/geminiService.ts';
 
 const App: React.FC = () => {
   const [files, setFiles] = useState<File[]>([]);
@@ -50,14 +50,12 @@ const App: React.FC = () => {
     const individualAnalyses: ArticleAnalysis[] = [];
 
     try {
-      // Step 1: Individual Analysis
       for (let i = 0; i < files.length; i++) {
         setProgress(p => ({ ...p, current: i + 1 }));
         const analysis = await analyzeArticle(files[i]);
         individualAnalyses.push(analysis);
       }
 
-      // Step 2 & 3: Final Synthesis
       setStatus(ProcessStatus.SYNTHESIZING);
       const synthesisData = await generateFinalSynthesis(individualAnalyses);
 
@@ -104,9 +102,21 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const renderMarkdownTable = (md: string) => {
+    const rows = md.trim().split('\n').filter(r => r.includes('|') && !r.includes('---'));
+    if (rows.length < 2) return `<p class="italic text-slate-400">Tabela não disponível.</p>`;
+
+    const header = rows[0].split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
+    const body = rows.slice(1).map(row => {
+      const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
+      return `<tr>${cells}</tr>`;
+    }).join('');
+
+    return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
+  };
+
   return (
     <div className="min-h-screen pb-20">
-      {/* Header */}
       <header className="bg-slate-900 text-white py-8 px-6 shadow-lg border-b-4 border-blue-600">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -229,7 +239,6 @@ const App: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {/* Tabs */}
             <div className="flex border-b border-slate-200 overflow-x-auto no-scrollbar">
               <button 
                 onClick={() => setActiveTab('individual')}
@@ -257,7 +266,6 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            {/* Content Areas */}
             <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200">
               {activeTab === 'individual' && (
                 <div className="space-y-12">
@@ -363,27 +371,12 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Footer / Citation Note */}
       <footer className="mt-20 border-t border-slate-200 py-10 px-6 text-center text-slate-400 text-sm">
         <p>© {new Date().getFullYear()} Acadêmico IA - Desenvolvido com Gemini Pro API</p>
         <p className="mt-2 italic">Lembre-se: Esta ferramenta é assistencial. Sempre valide as interpretações da IA com os textos originais.</p>
       </footer>
     </div>
   );
-};
-
-// Helper function to render a basic markdown table to HTML
-const renderMarkdownTable = (md: string) => {
-  const rows = md.trim().split('\n').filter(r => r.includes('|') && !r.includes('---'));
-  if (rows.length < 2) return `<p class="italic text-slate-400">Tabela não disponível.</p>`;
-
-  const header = rows[0].split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
-  const body = rows.slice(1).map(row => {
-    const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
-    return `<tr>${cells}</tr>`;
-  }).join('');
-
-  return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
 };
 
 export default App;
