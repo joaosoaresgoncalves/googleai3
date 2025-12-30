@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileText, 
   Upload, 
@@ -11,7 +11,8 @@ import {
   BookOpen,
   GitMerge,
   ChevronRight,
-  Trash2
+  Trash2,
+  Key
 } from 'lucide-react';
 import { ArticleAnalysis, SynthesisReport, ProcessStatus } from './types.ts';
 import { analyzeArticle, generateFinalSynthesis } from './services/geminiService.ts';
@@ -23,6 +24,31 @@ const App: React.FC = () => {
   const [report, setReport] = useState<SynthesisReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'individual' | 'matrix' | 'synthesis'>('individual');
+  const [hasKey, setHasKey] = useState<boolean>(true);
+
+  useEffect(() => {
+    checkApiKey();
+  }, []);
+
+  const checkApiKey = async () => {
+    // Verifica se a chave existe no process.env ou se já foi selecionada via AI Studio
+    const exists = !!process.env.API_KEY;
+    if (!exists && window.aistudio) {
+      const selected = await window.aistudio.hasSelectedApiKey();
+      setHasKey(selected);
+    } else {
+      setHasKey(exists);
+    }
+  };
+
+  const handleOpenKeySelector = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      // Assume sucesso conforme as regras (race condition mitigation)
+      setHasKey(true);
+      setError(null);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -50,14 +76,12 @@ const App: React.FC = () => {
     const individualAnalyses: ArticleAnalysis[] = [];
 
     try {
-      // Processamento individual de cada artigo
       for (let i = 0; i < files.length; i++) {
         setProgress(p => ({ ...p, current: i + 1 }));
         const analysis = await analyzeArticle(files[i]);
         individualAnalyses.push(analysis);
       }
 
-      // Processamento da síntese final
       setStatus(ProcessStatus.SYNTHESIZING);
       const synthesisData = await generateFinalSynthesis(individualAnalyses);
 
@@ -69,32 +93,29 @@ const App: React.FC = () => {
       });
       setStatus(ProcessStatus.COMPLETED);
     } catch (err: any) {
-      console.error("Erro detalhado:", err);
-      // Exibe a mensagem de erro real vinda da API para facilitar o diagnóstico
-      const errorMessage = err.message || "Erro desconhecido";
-      setError(`Falha na IA: ${errorMessage}. (Dica: Verifique se a variável API_KEY está correta no Vercel)`);
+      console.error("Erro no processamento:", err);
+      const msg = err.message || "";
+      
+      if (msg.includes("Requested entity was not found") || msg.includes("API key not valid") || msg.includes("API key is missing")) {
+        setError("Sua chave de API parece inválida ou não tem permissão para o modelo Gemini 3. Por favor, conecte uma chave válida de um projeto com faturamento ativo.");
+        setHasKey(false);
+      } else {
+        setError(`Falha na IA: ${msg}`);
+      }
       setStatus(ProcessStatus.ERROR);
     }
   };
 
   const downloadReport = () => {
     if (!report) return;
-    
     let content = `# Relatório de Síntese de Evidências Acadêmicas\n\n`;
     content += `## 1. Matriz de Síntese\n\n${report.matrixMarkdown}\n\n`;
     content += `## 2. Síntese Narrativa\n\n${report.narrativeSynthesis}\n\n`;
     content += `## 3. Conflitos e Divergências\n\n${report.conflicts}\n\n`;
     content += `## 4. Análises Individuais\n\n`;
-    
     report.analyses.forEach((a, i) => {
-      content += `### Artigo ${i + 1}: ${a.title}\n`;
-      content += `**Autores:** ${a.authors} (${a.year})\n`;
-      content += `**Problema:** ${a.problem}\n`;
-      content += `**Metodologia:** ${a.methodology}\n`;
-      content += `**Achados:** ${a.findings}\n`;
-      content += `**Crítica:** ${a.critique}\n\n`;
+      content += `### Artigo ${i + 1}: ${a.title}\n**Autores:** ${a.authors} (${a.year})\n**Problema:** ${a.problem}\n**Metodologia:** ${a.methodology}\n**Achados:** ${a.findings}\n**Crítica:** ${a.critique}\n\n`;
     });
-
     const blob = new Blob([content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -109,13 +130,11 @@ const App: React.FC = () => {
   const renderMarkdownTable = (md: string) => {
     const rows = md.trim().split('\n').filter(r => r.includes('|') && !r.includes('---'));
     if (rows.length < 2) return `<p class="italic text-slate-400">Tabela não disponível.</p>`;
-
     const header = rows[0].split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
     const body = rows.slice(1).map(row => {
       const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
       return `<tr>${cells}</tr>`;
     }).join('');
-
     return `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`;
   };
 
@@ -145,6 +164,27 @@ const App: React.FC = () => {
       </header>
 
       <main className="max-w-6xl mx-auto mt-10 px-6">
+        {!hasKey && (
+          <div className="mb-8 p-6 bg-blue-50 border border-blue-200 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="bg-blue-600 p-3 rounded-full text-white">
+                <Key className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-blue-900">Conectar ao Google AI Studio</h3>
+                <p className="text-sm text-blue-700">Para usar o Gemini 3 Pro, você deve conectar uma API Key de um projeto com faturamento habilitado.</p>
+                <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener" className="text-xs text-blue-600 underline hover:text-blue-800">Ver documentação de faturamento</a>
+              </div>
+            </div>
+            <button 
+              onClick={handleOpenKeySelector}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold transition-all shadow-md active:scale-95 whitespace-nowrap"
+            >
+              Conectar Chave API
+            </button>
+          </div>
+        )}
+
         {status === ProcessStatus.IDLE || status === ProcessStatus.ERROR ? (
           <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200">
             <div className="mb-8">
@@ -154,10 +194,10 @@ const App: React.FC = () => {
               </h2>
               <p className="text-slate-600 mb-6">
                 Selecione de 1 a 20 artigos acadêmicos para iniciar a análise sistemática. 
-                Os arquivos serão processados individualmente e depois sintetizados.
               </p>
               
-              <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer group">
+              <label className={`flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-xl transition-colors cursor-pointer group
+                ${!hasKey ? 'bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed' : 'bg-slate-50 border-slate-300 hover:bg-slate-100'}`}>
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <Upload className="w-12 h-12 text-slate-400 group-hover:text-blue-500 mb-4 transition-colors" />
                   <p className="mb-2 text-sm text-slate-500 font-medium">Clique para selecionar ou arraste e solte</p>
@@ -168,7 +208,8 @@ const App: React.FC = () => {
                   className="hidden" 
                   multiple 
                   accept=".pdf" 
-                  onChange={handleFileChange} 
+                  onChange={handleFileChange}
+                  disabled={!hasKey}
                 />
               </label>
             </div>
@@ -183,10 +224,7 @@ const App: React.FC = () => {
                         <FileText className="w-5 h-5 text-red-400 flex-shrink-0" />
                         <span className="text-sm truncate font-medium text-slate-700">{file.name}</span>
                       </div>
-                      <button 
-                        onClick={() => removeFile(idx)}
-                        className="text-slate-400 hover:text-red-500 transition-colors p-1"
-                      >
+                      <button onClick={() => removeFile(idx)} className="text-slate-400 hover:text-red-500 transition-colors p-1">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -204,9 +242,9 @@ const App: React.FC = () => {
 
             <button
               onClick={startProcessing}
-              disabled={files.length === 0}
+              disabled={files.length === 0 || !hasKey}
               className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-2
-                ${files.length > 0 
+                ${files.length > 0 && hasKey
                   ? 'bg-blue-600 hover:bg-blue-700 text-white' 
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
             >
@@ -286,7 +324,6 @@ const App: React.FC = () => {
                           </div>
                         </div>
                       </div>
-                      
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
                         <section>
                           <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3">Problema / Lacuna</h4>
@@ -312,7 +349,6 @@ const App: React.FC = () => {
                   ))}
                 </div>
               )}
-
               {activeTab === 'matrix' && report && (
                 <div className="overflow-x-auto overflow-y-hidden">
                   <div className="prose prose-slate max-w-none">
@@ -322,53 +358,36 @@ const App: React.FC = () => {
                       td { padding: 1rem; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: top; line-height: 1.5; }
                       tr:hover td { background: #f8fafc; }
                     `}</style>
-                    <div dangerouslySetInnerHTML={{ 
-                      __html: renderMarkdownTable(report.matrixMarkdown) 
-                    }} />
+                    <div dangerouslySetInnerHTML={{ __html: renderMarkdownTable(report.matrixMarkdown) }} />
                   </div>
                 </div>
               )}
-
               {activeTab === 'synthesis' && report && (
                 <div className="space-y-12">
                   <section>
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="bg-blue-100 p-2 rounded-lg">
-                        <GitMerge className="w-6 h-6 text-blue-600" />
-                      </div>
+                      <div className="bg-blue-100 p-2 rounded-lg"><GitMerge className="w-6 h-6 text-blue-600" /></div>
                       <h3 className="text-2xl font-bold academic-serif text-slate-900">Síntese Narrativa</h3>
                     </div>
                     <div className="bg-slate-50 p-8 rounded-2xl border border-slate-200 leading-relaxed text-slate-700 academic-serif text-lg">
-                      {report.narrativeSynthesis.split('\n').map((line, i) => (
-                        <p key={i} className="mb-4 last:mb-0">{line}</p>
-                      ))}
+                      {report.narrativeSynthesis.split('\n').map((line, i) => (<p key={i} className="mb-4 last:mb-0">{line}</p>))}
                     </div>
                   </section>
-
                   <section>
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="bg-orange-100 p-2 rounded-lg">
-                        <AlertCircle className="w-6 h-6 text-orange-600" />
-                      </div>
+                      <div className="bg-orange-100 p-2 rounded-lg"><AlertCircle className="w-6 h-6 text-orange-600" /></div>
                       <h3 className="text-2xl font-bold academic-serif text-slate-900">Conflitos e Divergências</h3>
                     </div>
                     <div className="bg-orange-50 p-8 rounded-2xl border border-orange-100 leading-relaxed text-slate-700">
-                       {report.conflicts.split('\n').map((line, i) => (
-                        <p key={i} className="mb-4 last:mb-0">{line}</p>
-                      ))}
+                       {report.conflicts.split('\n').map((line, i) => (<p key={i} className="mb-4 last:mb-0">{line}</p>))}
                     </div>
                   </section>
                 </div>
               )}
             </div>
-
             <div className="flex justify-center mt-12">
-               <button 
-                onClick={() => { setFiles([]); setStatus(ProcessStatus.IDLE); setReport(null); }}
-                className="flex items-center gap-2 text-slate-500 hover:text-blue-600 transition-colors font-medium"
-              >
-                <Trash2 className="w-4 h-4" />
-                Limpar tudo e iniciar nova síntese
+               <button onClick={() => { setFiles([]); setStatus(ProcessStatus.IDLE); setReport(null); }} className="flex items-center gap-2 text-slate-500 hover:text-blue-600 transition-colors font-medium">
+                <Trash2 className="w-4 h-4" /> Limpar tudo e iniciar nova síntese
               </button>
             </div>
           </div>

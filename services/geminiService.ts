@@ -16,8 +16,8 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export const analyzeArticle = async (file: File): Promise<ArticleAnalysis> => {
-  // Use a chave diretamente do ambiente
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  // Cria nova instância para garantir o uso da chave mais recente (do seletor ou process.env)
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const base64Data = await fileToBase64(file);
 
   const response = await ai.models.generateContent({
@@ -64,7 +64,7 @@ export const analyzeArticle = async (file: File): Promise<ArticleAnalysis> => {
 
   const text = response.text;
   if (!text) {
-    throw new Error("A IA não retornou conteúdo para este artigo. Pode ser uma restrição do arquivo ou erro de API.");
+    throw new Error("A IA não retornou conteúdo para este artigo. Verifique se a chave tem acesso ao Gemini 3 Pro.");
   }
 
   const data = JSON.parse(text.trim());
@@ -76,7 +76,7 @@ export const analyzeArticle = async (file: File): Promise<ArticleAnalysis> => {
 };
 
 export const generateFinalSynthesis = async (analyses: ArticleAnalysis[]): Promise<{ matrix: string, narrative: string, conflicts: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const analysesText = analyses.map((a, i) => `
     Artigo ${i + 1}:
