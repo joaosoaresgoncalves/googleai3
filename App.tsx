@@ -42,6 +42,12 @@ const App: React.FC = () => {
   const startProcessing = async () => {
     if (files.length === 0) return;
     
+    if (!process.env.API_KEY) {
+      setError("ERRO: Variável de ambiente 'API_KEY' não configurada. Certifique-se de que o nome da variável no Vercel é exatamente 'API_KEY'.");
+      setStatus(ProcessStatus.ERROR);
+      return;
+    }
+
     setStatus(ProcessStatus.EXTRACTING);
     setError(null);
     setReport(null);
@@ -67,8 +73,8 @@ const App: React.FC = () => {
       });
       setStatus(ProcessStatus.COMPLETED);
     } catch (err: any) {
-      console.error(err);
-      setError("Ocorreu um erro durante o processamento. Verifique sua chave de API ou a integridade dos arquivos.");
+      console.error("Erro no processamento:", err);
+      setError(`Erro no processamento: ${err.message || 'Verifique sua chave de API e a integridade dos arquivos.'}`);
       setStatus(ProcessStatus.ERROR);
     }
   };

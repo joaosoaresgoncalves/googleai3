@@ -16,35 +16,34 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export const analyzeArticle = async (file: File): Promise<ArticleAnalysis> => {
+  // Inicialização dentro da função para garantir que pegue a chave mais recente do ambiente
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const base64Data = await fileToBase64(file);
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
-    contents: [
-      {
-        parts: [
-          {
-            inlineData: {
-              mimeType: file.type,
-              data: base64Data,
-            },
+    contents: {
+      parts: [
+        {
+          inlineData: {
+            mimeType: file.type,
+            data: base64Data,
           },
-          {
-            text: `Analise este artigo acadêmico rigorosamente e extraia as seguintes informações em Português:
-            1. Título do Artigo
-            2. Autores
-            3. Ano de Publicação
-            4. Problema/Lacuna (O que o artigo busca resolver?)
-            5. Metodologia (Desenho, amostra, métodos)
-            6. Achados Principais (Resultados diretos e significância)
-            7. Crítica (Breve avaliação da robustez do estudo)
-            
-            Retorne os dados estritamente no formato JSON solicitado.`,
-          },
-        ],
-      },
-    ],
+        },
+        {
+          text: `Analise este artigo acadêmico rigorosamente e extraia as seguintes informações em Português:
+          1. Título do Artigo
+          2. Autores
+          3. Ano de Publicação
+          4. Problema/Lacuna (O que o artigo busca resolver?)
+          5. Metodologia (Desenho, amostra, métodos)
+          6. Achados Principais (Resultados diretos e significância)
+          7. Crítica (Breve avaliação da robustez do estudo)
+          
+          Retorne os dados estritamente no formato JSON solicitado conforme o esquema definido.`,
+        },
+      ],
+    },
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -63,7 +62,11 @@ export const analyzeArticle = async (file: File): Promise<ArticleAnalysis> => {
     },
   });
 
-  const data = JSON.parse(response.text || "{}");
+  if (!response.text) {
+    throw new Error("Resposta do modelo vazia durante a análise do artigo.");
+  }
+
+  const data = JSON.parse(response.text.trim());
   return {
     ...data,
     id: Math.random().toString(36).substr(2, 9),
@@ -83,20 +86,21 @@ export const generateFinalSynthesis = async (analyses: ArticleAnalysis[]): Promi
     Crítica: ${a.critique}
   `).join('\n\n');
 
-  const prompt = `Com base nas análises individuais abaixo de vários artigos acadêmicos, gere:
+  const prompt = `Com base nas análises individuais abaixo de vários artigos acadêmicos, gere uma síntese sistemática rigorosa:
   1. Uma MATRIZ DE SÍNTESE COMPARATIVA em formato de Tabela Markdown com as colunas: [Artigo (Título Curto)] | [Objetivo] | [Metodologia] | [Principais Resultados] | [Limitações/Gaps].
-  2. Uma SÍNTESE NARRATIVA consolidando o conhecimento da área.
+  2. Uma SÍNTESE NARRATIVA consolidando o conhecimento da área em parágrafos coesos.
   3. Uma seção de CONFLITOS E DIVERGÊNCIAS, identificando onde os autores concordam e onde há discordâncias teóricas ou metodológicas.
 
-  Mantenha um tom acadêmico rigoroso e use Idioma Português.
+  Mantenha um tom acadêmico profissional e use Idioma Português.
 
-  ANÁLISES:
+  DADOS DE ENTRADA:
   ${analysesText}`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
-    contents: prompt,
+    contents: { parts: [{ text: prompt }] },
     config: {
+      thinkingConfig: { thinkingBudget: 32768 }, // Orçamento máximo para raciocínio complexo de síntese
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -110,5 +114,9 @@ export const generateFinalSynthesis = async (analyses: ArticleAnalysis[]): Promi
     }
   });
 
-  return JSON.parse(response.text || "{}");
+  if (!response.text) {
+    throw new Error("Resposta do modelo vazia durante a síntese final.");
+  }
+
+  return JSON.parse(response.text.trim());
 };
